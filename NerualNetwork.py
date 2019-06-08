@@ -1,6 +1,4 @@
 import numpy as np
-import sys
-from math import ceil
 
 
 class NN():
@@ -16,7 +14,7 @@ class NN():
             self.biases.append(bias)
         self.output_len = network_architecture[-1]
 
-    def _forward(self, x, y):
+    def _forward(self, x, y=None):
         h = np.copy(x)
         h_list = [h]
         for i, (layer, bias) in enumerate(zip(self.layers, self.biases)):
@@ -25,26 +23,27 @@ class NN():
             else:
                 h = self._sigmoid(np.dot(layer.T, h) + bias)
             h_list.append(h)
-        loss = self._loss(h_list[-1], y)
-        return h_list, loss
+        if y is not None:
+            loss = self._loss(h_list[-1], y)
+            return h_list, loss
+        return h_list
 
     def _backpropagation(self, h_list, y):
-        error_list = []
-        h_outout = h_list.pop(-1)
-        error = (h_outout - y) * self._sigmoid_dervative(h_outout)
+        errors_list = []
+        h_outout_layer = h_list.pop(-1)
+        error = (h_outout_layer - y) * self._sigmoid_dervative(h_outout_layer)
         for h, W in zip(reversed(h_list), reversed(self.layers)):
-            error_list.append(error)
+            errors_list.append(error)
             error = np.dot(W, error) * self._sigmoid_dervative(h)
-
-        dLdW_list = []
-        dLdB_list = []
-        for h, delta in zip(h_list, reversed(error_list)):
+        loss_dervative_by_W_list = []
+        loss_dervative_by_b_list = []
+        for h, delta in zip(h_list, reversed(errors_list)):
             dLdW = np.dot(h.reshape(-1, 1), delta.reshape(-1, 1).T)
             dLdB = delta
-            dLdW_list.append(dLdW)
-            dLdB_list.append(dLdB)
+            loss_dervative_by_W_list.append(dLdW)
+            loss_dervative_by_b_list.append(dLdB)
 
-        return dLdW_list, dLdB_list
+        return loss_dervative_by_W_list, loss_dervative_by_b_list
 
     def _relu(self, x):
         return np.maximum(0.01 * x, x)
@@ -103,7 +102,15 @@ class NN():
             total_loss += loss
         return total_loss / n, truely_predicted / n
 
-    def fit(self, X, Y, epochs=1024, batch_size=32, eta=0.1, decay=0.0001):
+    def predict(self, X):
+        n = len(X)
+        predictions = np.zeros(n, dtype=int)
+        for i, x in enumerate(X):
+            h_list = self._forward(x)
+            predictions[i] = np.argmax(h_list[-1])
+        return predictions
+
+    def fit(self, X, Y, epochs=1024, batch_size=32, eta=0.1, decay=0.0001, print_evaluation=False):
         n = len(Y)
         Y = self._generate_onehot(Y)
         n_batch = int(n / batch_size) + 1
@@ -125,9 +132,9 @@ class NN():
                     dW /= batch_size
                     db /= batch_size
                 for layer, dW in zip(self.layers, layers_gradients):
-                    layer -= eta * dW
+                    layer -= eta * (decay * layer + dW)
                 for bias, dB in zip(self.biases, biases_gradients):
                     bias -= eta * dB
-
-            loss, acc = self.evaluation(X, Y)
-            print(f'epoch {i} train loss : {loss}, train accuracy : {acc}')
+            if print_evaluation:
+                loss, acc = self.evaluation(X, Y)
+                print(f'epoch {i} train loss : {"%.2f" % loss}, train accuracy : {"%.2f" % acc}')
